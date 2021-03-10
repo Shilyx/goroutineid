@@ -1,4 +1,4 @@
-package goroutineid2
+package goroutineid
 
 import (
 	"fmt"
