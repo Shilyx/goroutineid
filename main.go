@@ -1,21 +1,42 @@
-package goroutineid
+package goroutineid2
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync/atomic"
 )
 
-var (
-	url                 = "127.128.129.130:131"
+const (
 	magicNumber1 uint32 = 0x11170204
-	indexNumber  uint32 = 0x10240
 	magicNumber2 uint32 = 0x21106050
 )
+
+var (
+	indexNumber uint32 = 0x10240
+)
+
+type respWriter struct {
+	header     http.Header
+	statusCode int
+	buf        []byte
+}
+
+func (resp *respWriter) Header() http.Header {
+	return resp.header
+}
+
+func (resp *respWriter) Write(buf []byte) (int, error) {
+	resp.buf = append(resp.buf, buf...)
+	return len(buf), nil
+}
+
+func (resp *respWriter) WriteHeader(statusCode int) {
+	resp.statusCode = statusCode
+}
 
 // Get Get current goroutine id
 func Get() int64 {
@@ -23,22 +44,32 @@ func Get() int64 {
 }
 
 func getInternal(mark1, mark2, mark3 uint32) int64 {
-	res, err := http.Get("http://" + url + "/debug/pprof/goroutine?debug=2")
-
-	if err != nil {
-		return -1
+	resp := respWriter{
+		header:     http.Header(make(map[string][]string)),
+		statusCode: http.StatusOK,
+		buf:        []byte{},
 	}
+	req := http.Request{
+		Method: "GET",
+		URL: &url.URL{
+			Path:     "/debug/pprof/goroutine",
+			RawQuery: "debug=2",
+		},
+		Header: map[string][]string{
+			"Accept":          {"text/plain"},
+			"Accept-Encoding": {"identity"},
+			"User-Agent":      {"github.com/shilyx/goroutineid"},
+		},
+	}
+	pprof.Index(&resp, &req)
 
-	buf, err := ioutil.ReadAll(res.Body)
-	res.Body.Close()
-
-	if err != nil {
+	if resp.statusCode != http.StatusOK {
 		return -1
 	}
 
 	markStr := fmt.Sprintf("(0x%x, 0x%x, 0x%x", mark1, mark2, mark3)
 
-	for _, part := range strings.Split(string(buf), "\ngoroutine ") {
+	for _, part := range strings.Split(string(resp.buf), "goroutine ") {
 		if strings.Index(part, markStr) > 0 {
 			pos := strings.Index(part, " ")
 
@@ -53,12 +84,4 @@ func getInternal(mark1, mark2, mark3 uint32) int64 {
 	}
 
 	return -1
-}
-
-func init() {
-	go func() {
-		sm := http.NewServeMux()
-		sm.HandleFunc("/debug/pprof/", pprof.Index)
-		http.ListenAndServe(url, sm)
-	}()
 }
