@@ -67,10 +67,11 @@ func getInternal(mark1, mark2, mark3 uint32) int64 {
 		return -1
 	}
 
-	markStr := fmt.Sprintf("(0x%x, 0x%x, 0x%x", mark1, mark2, mark3)
+	markStr := fmt.Sprintf("(0x%x, 0x%x,", mark1, mark2)
+	markStr64 := fmt.Sprintf("(0x%x,", uint64(mark2)*0x100000000+uint64(mark1))
 
 	for _, part := range strings.Split(string(resp.buf), "goroutine ") {
-		if strings.Index(part, markStr) > 0 {
+		if strings.Index(part, markStr) > 0 || strings.Index(part, markStr64) > 0 {
 			pos := strings.Index(part, " ")
 
 			if pos > 0 {
